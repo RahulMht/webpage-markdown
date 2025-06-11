@@ -1,0 +1,14 @@
+{
+  "name": "puppeteer-markdown-api",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "puppeteer": "^22.7.1",
+    "turndown": "^7.1.2"
+  }
+}
