@@ -1,21 +1,3 @@
-const express = require('express');
-const puppeteer = require('puppeteer');
-const TurndownService = require('turndown');
-
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-app.use(express.json());
-
-// 🔧 General-purpose Markdown cleaner
-function cleanMarkdown(raw) {
-  return raw
-    .replace(/\[\]\((mailto:[^)]+|https?:\/\/[^)]+)\)/g, '') // Remove empty links
-    .replace(/\n{3,}/g, '\n\n')                                  // Collapse excessive newlines
-    .replace(/\s{2,}/g, ' ')                                       // Collapse extra spaces
-    .trim();
-}
-
 app.get('/scrape', async (req, res) => {
   const url = req.query.url;
   if (!url) return res.status(400).json({ error: 'Missing url parameter' });
@@ -36,10 +18,9 @@ app.get('/scrape', async (req, res) => {
     const markdown = turndownService.turndown(html);
     const cleaned = cleanMarkdown(markdown);
 
-    res.json({ url, markdown: cleaned });
+    res.setHeader('Content-Type', 'text/markdown');
+    res.send(cleaned); // ← plain text, not JSON!
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
-
-app.listen(PORT, () => console.log(`✅ Generic Markdown Scraper API running on port ${PORT}`));
