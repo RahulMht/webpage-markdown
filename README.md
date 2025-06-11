@@ -1,25 +1,29 @@
-# Puppeteer Markdown Scraper API
+# Generic Puppeteer Markdown Scraper API
 
-A headless browser API using Puppeteer that scrapes fully-rendered HTML and returns it as Markdown.
+This service scrapes fully rendered HTML using Puppeteer and converts it to clean Markdown using Turndown.
 
-## ✨ Features
+## 🚀 Features
 
-- Full JavaScript rendering with Puppeteer
-- Converts HTML to clean Markdown
-- Docker-ready, deploy anywhere
+- Headless Chromium rendering with Puppeteer
+- HTML-to-Markdown conversion
+- Generic cleanup for universal site compatibility
 
-## 🛠 Run Locally
+## 🛠 Usage
 
 ```bash
 npm install
 node index.js
 ```
 
-Visit: `http://localhost:3000/scrape?url=https://example.com`
-
-## 🐳 Docker
+Or run via Docker:
 
 ```bash
-docker build -t puppeteer-api .
-docker run -p 3000:3000 puppeteer-api
+docker build -t markdown-scraper .
+docker run -p 3000:3000 markdown-scraper
+```
+
+Access via:
+
+```
+http://localhost:3000/scrape?url=https://example.com
 ```
