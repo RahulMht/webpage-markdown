@@ -7,12 +7,12 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-// 🔧 General-purpose Markdown cleaner
+// Generic cleanup for all sites
 function cleanMarkdown(raw) {
   return raw
-    .replace(/\[\]\((mailto:[^)]+|https?:\/\/[^)]+)\)/g, '') // Remove empty links
-    .replace(/\n{3,}/g, '\n\n')                                  // Collapse excessive newlines
-    .replace(/\s{2,}/g, ' ')                                       // Collapse extra spaces
+    .replace(/\[\]\((mailto:[^)]+|https?:\/\/[^)]+)\)/g, '') // Remove empty/broken links
+    .replace(/\n{3,}/g, '\n\n')                              // Collapse excessive newlines
+    .replace(/\s{2,}/g, ' ')                                 // Collapse extra spaces
     .trim();
 }
 
@@ -36,10 +36,14 @@ app.get('/scrape', async (req, res) => {
     const markdown = turndownService.turndown(html);
     const cleaned = cleanMarkdown(markdown);
 
-    res.json({ url, markdown: cleaned });
+    // Return raw Markdown instead of JSON
+    res.setHeader('Content-Type', 'text/markdown');
+    res.send(cleaned);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.listen(PORT, () => console.log(`✅ Generic Markdown Scraper API running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`✅ Markdown Scraper API is running on http://localhost:${PORT}`);
+});
