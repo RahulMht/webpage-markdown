@@ -1,41 +1,37 @@
-# ---- build stage ----
-FROM node:20-slim AS build
+# ---- dependencies ----
+FROM node:20-slim AS deps
 
-# Puppeteer needs a few extra libs that aren't in the slim image
+# Install system packages for Chromium used by Puppeteer
 RUN apt-get update && apt-get install -y \
-        libnss3 libatk1.0-0 libx11-xcb1 libxcomposite1 \
-        libxdamage1 libxrandr2 libgtk-3-0 libgbm1 \
-        libpango-1.0-0 libcairo2 fonts-liberation \
-        && rm -rf /var/lib/apt/lists/*
+    libnss3 libatk1.0-0 libx11-xcb1 libxcomposite1 \
+    libxdamage1 libxrandr2 libgtk-3-0 libgbm1 \
+    libpango-1.0-0 libcairo2 fonts-liberation \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy package metadata first for better layer caching
-COPY package.json package-lock.json* ./
+COPY package.json ./
 
-# Only install production deps
-RUN npm ci --omit=dev
+# Install only production dependencies; package-lock.json is optional
+RUN npm install --omit=dev
 
-# Copy the actual source
-COPY . .
-
-# ---- runtime stage ----
+# ---- runtime ----
 FROM node:20-slim
 
-# Same libraries needed at runtime for Chromium
 RUN apt-get update && apt-get install -y \
-        libnss3 libatk1.0-0 libx11-xcb1 libxcomposite1 \
-        libxdamage1 libxrandr2 libgtk-3-0 libgbm1 \
-        libpango-1.0-0 libcairo2 fonts-liberation \
-        && rm -rf /var/lib/apt/lists/*
+    libnss3 libatk1.0-0 libx11-xcb1 libxcomposite1 \
+    libxdamage1 libxrandr2 libgtk-3-0 libgbm1 \
+    libpango-1.0-0 libcairo2 fonts-liberation \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy node_modules from the build stage
-COPY --from=build /app /app
+# copy deps and source
+COPY --from=deps /app/node_modules ./node_modules
+COPY index.js ./index.js
 
 ENV NODE_ENV=production
 ENV PORT=3000
 
 EXPOSE 3000
-CMD ["npm", "start"]
+CMD ["node", "index.js"]
