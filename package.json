@@ -1,7 +1,7 @@
 {
   "name": "markdown-scraper",
   "version": "1.0.0",
-  "type": "commonjs",          // keeps require() happy
+  "type": "commonjs",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
