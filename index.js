@@ -1,16 +1,15 @@
 /* eslint-disable no-console */
-const express          = require('express');
-const puppeteer         = require('puppeteer');
-const TurndownService   = require('turndown');
-const LRU               = require('quick-lru');
+const express        = require('express');
+const puppeteer       = require('puppeteer');
+const TurndownService = require('turndown');
+const LRU             = require('quick-lru');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ♻️  One shared browser (spins up on first request)
+// ♻️  Shared browser instance
 let browser;
 async function getBrowser () {
   if (browser) return browser;
@@ -28,7 +27,7 @@ async function getBrowser () {
   return browser;
 }
 
-// 🧹 Generic Markdown cleaner
+// 🧹 Markdown cleaner
 function cleanMarkdown (raw) {
   return raw
     .replace(/\[\]\((mailto:[^)]+|https?:\/\/[^)]+)\)/g, '') // empty links
@@ -42,68 +41,63 @@ function cleanMarkdown (raw) {
 function chunkMarkdown (text, size = 2000) {
   const chunks = [];
   for (let i = 0; i < text.length; i += size) {
-    chunks.push({
-      id   : (chunks.length + 1),
-      text : text.slice(i, i + size)
-    });
+    chunks.push({ id: chunks.length + 1, text: text.slice(i, i + size) });
   }
   return chunks;
 }
 
-// ⚡ Very small in-process cache (URL → chunks)
-const cache = new LRU({ maxSize: 100, ttl: 1000 * 60 * 10 }); // 10 min
+// ⚡ tiny cache (URL → chunks)
+const cache = new LRU({ maxSize: 100, ttl: 600_000 }); // 10 min
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────
 app.get('/scrape', async (req, res) => {
   const url = req.query.url;
   if (!url) return res.status(400).json({ error: 'Missing url parameter' });
 
-  // Serve from cache if present
   if (cache.has(url)) return res.json({ url, chunks: cache.get(url) });
 
-  const abortTimeout = setTimeout(() => {
-    res.status(504).json({ error: 'Timeout fetching page' });
-  }, 30000); // 30 s hard cap
+  const abort = setTimeout(
+    () => res.status(504).json({ error: 'Timeout fetching page' }),
+    30000
+  );
 
   try {
     const page = await (await getBrowser()).newPage();
 
-    // Block heavy / irrelevant resource types
+    // block heavy assets
     await page.setRequestInterception(true);
-    page.on('request', req => {
-      const type = req.resourceType();
-      if (['image', 'media', 'font', 'stylesheet', 'eventsource', 'websocket'].includes(type)) {
-        return req.abort();
-      }
-      return req.continue();
+    page.on('request', r => {
+      const t = r.resourceType();
+      if (['image', 'media', 'font', 'stylesheet', 'eventsource', 'websocket'].includes(t)) r.abort();
+      else r.continue();
     });
 
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
     const html = await page.evaluate(() => document.body.innerHTML);
     await page.close();
 
-    clearTimeout(abortTimeout);
+    clearTimeout(abort);
 
     const turndown  = new TurndownService({ headingStyle: 'atx' });
     const markdown  = turndown.turndown(html);
     const cleaned   = cleanMarkdown(markdown);
     const chunks    = chunkMarkdown(cleaned);
 
-    cache.set(url, chunks); // store
+    cache.set(url, chunks);
 
     res.json({ url, chunks });
   } catch (err) {
-    clearTimeout(abortTimeout);
+    clearTimeout(abort);
     res.status(500).json({ error: err.message });
   }
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
+// graceful shutdown
 process.on('SIGINT', async () => {
   if (browser) await browser.close();
   process.exit(0);
 });
 
-app.listen(PORT, () => {
-  console.log(`✅ Fast Markdown Scraper API ready on port ${PORT}`);
-});
+app.listen(PORT, () =>
+  console.log(`✅ Fast Markdown Scraper API ready on port ${PORT}`)
+);
