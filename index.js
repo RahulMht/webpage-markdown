@@ -7,12 +7,11 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-// Generic cleanup for all sites
 function cleanMarkdown(raw) {
   return raw
-    .replace(/\[\]\((mailto:[^)]+|https?:\/\/[^)]+)\)/g, '') // Remove empty/broken links
-    .replace(/\n{3,}/g, '\n\n')                              // Collapse excessive newlines
-    .replace(/\s{2,}/g, ' ')                                 // Collapse extra spaces
+    .replace(/\[\]\((mailto:[^)]+|https?:\/\/[^)]+)\)/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/\s{2,}/g, ' ')
     .trim();
 }
 
@@ -27,23 +26,45 @@ app.get('/scrape', async (req, res) => {
     });
 
     const page = await browser.newPage();
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(5000); // wait for dynamic content to load
+
+    await page.evaluate(async () => {
+      await new Promise(resolve => {
+        let totalHeight = 0;
+        const distance = 100;
+        const timer = setInterval(() => {
+          window.scrollBy(0, distance);
+          totalHeight += distance;
+          if (totalHeight >= document.body.scrollHeight) {
+            clearInterval(timer);
+            resolve();
+          }
+        }, 200);
+      });
+    });
 
     const html = await page.content();
+    const textContent = await page.evaluate(() => document.body.innerText);
+
+    const phoneMatch = textContent.match(/\+\d{1,3}\s*\d{6,12}/);
+    const emailMatch = textContent.match(/[\w.-]+@[\w.-]+\.\w+/g);
+
     await browser.close();
 
     const turndownService = new TurndownService();
     const markdown = turndownService.turndown(html);
     const cleaned = cleanMarkdown(markdown);
 
-    // Return raw Markdown instead of JSON
+    const extra = `\n\n---\n\n📞 Phone: ${phoneMatch ? phoneMatch[0] : 'N/A'}\n✉️ Email: ${emailMatch ? emailMatch[0] : 'N/A'}\n`;
+
     res.setHeader('Content-Type', 'text/markdown');
-    res.send(cleaned);
+    res.send(cleaned + extra);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`✅ Markdown Scraper API is running on http://localhost:${PORT}`);
+  console.log(`✅ Enhanced Markdown Scraper API running on port ${PORT}`);
 });
