@@ -1,27 +1,41 @@
-# ─────────────────────────────────────────────────────────
-# Lightweight Node 20 image with the puppeteer deps baked in
-FROM node:20-slim
+# ---- build stage ----
+FROM node:20-slim AS build
 
-# Puppeteer needs a handful of system libs for headless Chrome
+# Puppeteer needs a few extra libs that aren't in the slim image
 RUN apt-get update && apt-get install -y \
-    ca-certificates wget \
-    fonts-liberation libatk-bridge2.0-0 libatk1.0-0 \
-    libcairo2 libcups2 libdbus-1-3 libexpat1 \
-    libfontconfig1 libgbm1 libglib2.0-0 libgtk-3-0 \
-    libnspr4 libnss3 libpango-1.0-0 libx11-6 \
-    libxcomposite1 libxdamage1 libxext6 libxfixes3 \
-    libxrandr2 libxrender1 libxtst6 xdg-utils \
-    --no-install-recommends && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+        libnss3 libatk1.0-0 libx11-xcb1 libxcomposite1 \
+        libxdamage1 libxrandr2 libgtk-3-0 libgbm1 \
+        libpango-1.0-0 libcairo2 fonts-liberation \
+        && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# install only production deps
-COPY package*.json ./
+# Copy package metadata first for better layer caching
+COPY package.json package-lock.json* ./
+
+# Only install production deps
 RUN npm ci --omit=dev
 
-# copy source
+# Copy the actual source
 COPY . .
 
+# ---- runtime stage ----
+FROM node:20-slim
+
+# Same libraries needed at runtime for Chromium
+RUN apt-get update && apt-get install -y \
+        libnss3 libatk1.0-0 libx11-xcb1 libxcomposite1 \
+        libxdamage1 libxrandr2 libgtk-3-0 libgbm1 \
+        libpango-1.0-0 libcairo2 fonts-liberation \
+        && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy node_modules from the build stage
+COPY --from=build /app /app
+
+ENV NODE_ENV=production
+ENV PORT=3000
+
 EXPOSE 3000
-CMD ["node", "index.js"]
+CMD ["npm", "start"]
