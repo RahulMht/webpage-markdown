@@ -10,7 +10,7 @@ import LRU                   from 'quick-lru';
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
-/* ────────── shared browser ────────── */
+/* ────────── shared browser instance ────────── */
 const browserPromise = puppeteer.launch({
   headless: 'new',
   ignoreHTTPSErrors: true,
@@ -21,7 +21,7 @@ const browserPromise = puppeteer.launch({
   ]
 });
 
-/* ───────────── utilities ──────────── */
+/* ─────────────── helpers ─────────────── */
 const td = new TurndownService({ headingStyle: 'atx' });
 
 function tidy(str) {
@@ -41,10 +41,10 @@ function chunk(text, size = 2_000) {
   return out;
 }
 
-/* in-memory cache: url → markdown string */
+/* tiny in-memory cache (url → markdown string) */
 const cache = new LRU({ maxSize: 100, ttl: 10 * 60_000 });
 
-/* ──────────────── route ───────────── */
+/* ───────────────── route ───────────────── */
 app.get('/scrape', async (req, res) => {
   const url = (req.query.url || '').trim();
   if (!/^https?:\/\//.test(url)) {
@@ -57,21 +57,19 @@ app.get('/scrape', async (req, res) => {
 
   if (cache.has(url)) {
     const markdown = cache.get(url);
-    return res.json(
-      wantChunks ? { url, chunks: chunk(markdown) } : { url, markdown }
-    );
+    return res.json(wantChunks ? { url, chunks: chunk(markdown) }
+                               : { url, markdown });
   }
 
-  /* 30-second hard timeout */
   const timer = setTimeout(() => {
     res.status(504).json({ error: 'Upstream timeout' });
   }, 30_000);
 
   try {
-    /* fetch HTML with Puppeteer */
     const browser = await browserPromise;
     const page    = await browser.newPage();
 
+    /* block heavy assets */
     await page.setRequestInterception(true);
     page.on('request', r => {
       const t = r.resourceType();
@@ -79,26 +77,46 @@ app.get('/scrape', async (req, res) => {
       else r.continue();
     });
 
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15_000 });
+    /* ─── load main document ─── */
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: 30_000 });
 
+    /* auto-click "Load More" + scroll for lazy loaders */
+    await page.evaluate(async () => {
+      const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+      let clicks = 0;
+      while (clicks < 5) {                       // safety cap
+        const btn = document.querySelector('.load-more-btn');
+        if (!btn || btn.disabled || btn.style.display === 'none') break;
+
+        btn.click();
+        clicks += 1;
+        await sleep(1500);                       // wait for Ajax
+        window.scrollTo(0, document.body.scrollHeight);
+      }
+      window.scrollTo(0, document.body.scrollHeight);
+      await sleep(800);
+    });
+
+    /* ─── capture HTML snapshot ─── */
     const rawHtml = await page.evaluate(() => {
-      document.querySelectorAll('script,style,noscript,iframe,header,footer,nav,ads,link[rel="stylesheet"]').forEach(el => el.remove());
-      return document.body.innerHTML;
+      document.querySelectorAll('script,style').forEach(el => el.remove());
+      return document.documentElement.outerHTML;
     });
     await page.close();
 
-    /* sanitize + extract main article */
+    /* clean + extract main content */
     const safeHtml = sanitizeHtml(rawHtml, { allowedTags: false, allowedAttributes: false });
     const dom      = new JSDOM(safeHtml, { url });
     const article  = new Readability(dom.window.document).parse();
+    const htmlForTD = article?.content || safeHtml;
 
-    const markdown = tidy(td.turndown(article?.content || safeHtml));
-    cache.set(url, markdown);           // store the full string
+    const markdown = tidy(td.turndown(htmlForTD));
+    cache.set(url, markdown);
 
     clearTimeout(timer);
-    res.json(
-      wantChunks ? { url, chunks: chunk(markdown) } : { url, markdown }
-    );
+    res.json(wantChunks ? { url, chunks: chunk(markdown) }
+                        : { url, markdown });
   } catch (err) {
     clearTimeout(timer);
     res.status(500).json({ error: err.message });
