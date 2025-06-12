@@ -1,4 +1,3 @@
-# ---------- runtime stage ----------
 FROM node:20-slim
 
 RUN apt-get update && apt-get install -y \
@@ -17,7 +16,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /root/.cache/puppeteer /root/.cache/puppeteer
 
 ENV NODE_ENV=production
-ENV PORT=3000        # comment moved to its own line ↑
+ENV PORT=3000      
 
 EXPOSE 3000
 CMD ["node", "index.js"]
