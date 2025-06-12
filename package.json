@@ -1,14 +1,15 @@
 {
-  "name": "puppeteer-markdown-api",
+  "name": "markdown-scraper",
   "version": "1.0.0",
+  "type": "commonjs",          // keeps require() happy
   "main": "index.js",
-  "type": "commonjs",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "puppeteer": "^22.7.1",
-    "turndown": "^7.1.2"
+    "express": "^4.19.2",
+    "puppeteer": "^22.10.0",
+    "turndown": "^7.1.2",
+    "quick-lru": "^6.1.1"
   }
 }
